@@ -45,8 +45,11 @@ class Alert(Markdown):
 
     @classmethod
     def applies(cls, obj: Any) -> float | bool | None:
-        priority = Markdown.applies(obj)
-        return 0 if priority else False
+        # Inline the Markdown.applies logic to avoid function call overhead
+        if hasattr(obj, '_repr_markdown_') or isinstance(obj, str):
+            return 0
+        else:
+            return False
 
     def __init__(self, object=None, **params):
         if "sizing_mode" not in params and "width" not in params:
