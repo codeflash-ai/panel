@@ -539,12 +539,20 @@ class BaseTable(ReactiveData, Widget):
             filters.extend(self._get_header_filters(df))
 
         if filters:
+            # Use np.logical_and.reduce for multiple boolean masks
             mask = filters[0]
-            for f in filters:
-                mask &= f
+            if len(filters) > 1:
+                mask = np.logical_and.reduce(filters)
             if self._edited_indexes:
-                edited_mask = (df.index.isin(self._edited_indexes))
-                mask = mask | edited_mask
+                # Use pandas Index for efficient lookup
+                edited_indexes = self._edited_indexes
+                # If index is very large, prefer lookup with a set
+                if len(edited_indexes) < 64:
+                    edited_mask = df.index.isin(edited_indexes)
+                else:
+                    edited_mask = df.index.isin(set(edited_indexes))
+                if edited_mask.any():
+                    mask = mask | edited_mask
             df = df[mask]
         return df
 
