@@ -626,9 +626,10 @@ class HoloViews(Pane):
     def _resolve_widget(
         cls, key: str, dynamic: bool, default_widgets: WidgetMapping | None = None
     ) -> WidgetType:
-        if default_widgets is None:
-            default_widgets = {}
-        widget_type = default_widgets.get(key, cls.default_widgets.get(key, None))
+        if default_widgets is not None and key in default_widgets:
+            widget_type = default_widgets[key]
+        else:
+            widget_type = cls.default_widgets.get(key, None)
         if widget_type is None:
             raise ValueError("No valid {key} widget type found.")
         elif isinstance(widget_type, tuple):
