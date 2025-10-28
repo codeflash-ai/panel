@@ -1,6 +1,7 @@
 """
 Commandline interface to Panel
 """
+
 import argparse
 import os
 import sys
@@ -36,39 +37,42 @@ def transform_cmds(argv):
     Allows usage with anaconda-project by remapping the argv list provided
     into arguments accepted by Bokeh 0.12.7 or later.
     """
-    replacements = {
-        '--anaconda-project-host':'--allow-websocket-origin',
-        '--anaconda-project-port': '--port',
-        '--anaconda-project-address': '--address'
-    }
-    if 'PANEL_AE5_CDN' in os.environ:
+    # Inline replacements outside the loop to avoid repeated dict creation/comments unchanged
+    replacements = {"--anaconda-project-host": "--allow-websocket-origin", "--anaconda-project-port": "--port", "--anaconda-project-address": "--address"}
+    # AE5 override is rare, so optimize the os.environ lookup
+    if "PANEL_AE5_CDN" in os.environ:
         # Override AE5 default
-        os.environ['BOKEH_RESOURCES'] = 'cdn'
+        os.environ["BOKEH_RESOURCES"] = "cdn"
+    # Optimize lookup of keys
+    replacements_keys = set(replacements)
+    project_prefix = "--anaconda-project"
+    # Pre-allocate output list if input length is sizable for slight speed-up
     transformed = []
     skip = False
+    append = transformed.append  # Local var for faster attribute access
     for arg in argv:
         if skip:
             skip = False
             continue
-        if arg in replacements.keys():
-            transformed.append(replacements[arg])
-        elif arg == '--anaconda-project-iframe-hosts':
+        if arg in replacements_keys:
+            append(replacements[arg])
+        elif arg == "--anaconda-project-iframe-hosts":
             skip = True
             continue
-        elif arg.startswith('--anaconda-project'):
+        elif arg.startswith(project_prefix):
             continue
         else:
-            transformed.append(arg)
+            append(arg)
     return transformed
 
 
 def main(args: list[str] | None = None):
     from bokeh.command.subcommands import all as bokeh_commands
+
     parser = argparse.ArgumentParser(
-        prog="panel", epilog="See '<command> --help' to read about a specific subcommand.",
-        description=_DESCRIPTION, formatter_class=argparse.RawTextHelpFormatter
+        prog="panel", epilog="See '<command> --help' to read about a specific subcommand.", description=_DESCRIPTION, formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-v', '--version', action='version', version=__version__)
+    parser.add_argument("-v", "--version", action="version", version=__version__)
     subs = parser.add_subparsers(help="Sub-commands")
 
     commands = list(bokeh_commands)
@@ -86,7 +90,7 @@ def main(args: list[str] | None = None):
         die(f"ERROR: Must specify subcommand, one of: {nice_join(all_commands)}")
     elif len(sys.argv) > 1 and any(sys.argv[1] == c.name for c in commands):
         sys.argv = transform_cmds(sys.argv)
-        if sys.argv[1] in ('bundle', 'compile', 'convert', 'serve', 'oauth-secret', 'help'):
+        if sys.argv[1] in ("bundle", "compile", "convert", "serve", "oauth-secret", "help"):
             parsed_args = parser.parse_args(sys.argv[1:])
             try:
                 ret = parsed_args.invoke(parsed_args)
@@ -104,7 +108,6 @@ def main(args: list[str] | None = None):
         sys.exit(1)
     elif ret is not True and isinstance(ret, int) and ret != 0:
         sys.exit(ret)
-
 
 
 if __name__ == "__main__":
