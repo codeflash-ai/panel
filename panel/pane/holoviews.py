@@ -1010,10 +1010,11 @@ Viewable._preprocessing_hooks.append(link_axes)
 Viewable._preprocessing_hooks.append(find_links)
 
 def _hvplot_interactive_transform(obj):
-    if 'hvplot.interactive' not in sys.modules:
+    mod = sys.modules.get('hvplot.interactive')
+    if mod is None:
         return obj
-    from hvplot.interactive import Interactive
-    if not isinstance(obj, Interactive):
+    Interactive = getattr(mod, 'Interactive', None)
+    if Interactive is None or not isinstance(obj, Interactive):
         return obj
     return bind(lambda *_: obj.eval(), *obj._params)
 
