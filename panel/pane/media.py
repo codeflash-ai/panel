@@ -187,15 +187,19 @@ def _detect_audio_format(data: bytes) -> str | None:
     -------
     "mp3", "wav", "ogg", or None if unknown.
     """
-    # MP3: ID3 tag or MPEG frame sync (0xFFEx or 0xFFFx)
-    if data.startswith(b"ID3") or (len(data) > 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
+    # Fast path: check first 4 bytes once
+    if len(data) >= 4:
+        hdr = data[:4]
+        if hdr == b"OggS":
+            return "ogg"
+        if hdr == b"RIFF" and len(data) >= 12 and data[8:12] == b"WAVE":
+            return "wav"
+        if hdr[:3] == b"ID3":
+            return "mp3"
+    # Fast path: MP3 MPEG frame sync (0xFFEx or 0xFFFx)
+    if len(data) > 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
         return "mp3"
-    elif data.startswith(b"RIFF") and data[8:12] == b"WAVE":
-        return "wav"
-    elif data.startswith(b"OggS"):
-        return "ogg"
-    else:
-        return None
+    return None
 
 class Audio(_MediaBase):
     """
