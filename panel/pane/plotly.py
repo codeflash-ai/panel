@@ -13,7 +13,7 @@ import param
 from bokeh.models import ColumnDataSource
 from pyviz_comms import JupyterComm
 
-from ..util import lazy_load, try_datetime64_to_datetime
+from ..util import lazy_load
 from ..util.checks import datetime_types, isdatetime
 from ..viewable import Layoutable
 from .base import ModelPane
@@ -258,22 +258,34 @@ class Plotly(ModelPane):
 
     @staticmethod
     def _convert_trace(trace):
-        trace = dict(trace)
+        # Copy trace only if needed: delay copy until a datetime key is found
+        needs_copy = False
+        out_trace = trace
         for key in trace:
-            if not isdatetime(trace[key]):
-                continue
             arr = trace[key]
+            if not isdatetime(arr):
+                continue
+            if not needs_copy:
+                out_trace = dict(trace)
+                needs_copy = True
             if isinstance(arr, np.ndarray):
                 if arr.dtype.kind == 'M' and arr.ndim == 2 and arr.shape[1] == 1:
-                    arr = np.array([[str(try_datetime64_to_datetime(v[0]))] for v in arr])
+                    # Vectorize conversion for performance
+                    flat = arr[:, 0]
+                    converted = flat.astype('datetime64[ms]').astype('O')
+                    str_arr = np.asarray([str(v) for v in converted])
+                    arr_out = str_arr.reshape(-1, 1)
+                    out_trace[key] = arr_out
                 else:
-                    arr = arr.astype(str)
+                    # Use numpy's vectorized string conversion if possible
+                    arr_out = arr.astype(str)
+                    out_trace[key] = arr_out
             elif isinstance(arr, datetime_types):
-                arr = str(arr)
+                out_trace[key] = str(arr)
             else:
-                arr = [str(v) for v in arr]
-            trace[key] = arr
-        return trace
+                # Try to use list comprehension efficiently
+                out_trace[key] = [str(v) for v in arr]
+        return out_trace
 
     @classmethod
     def _plotly_json_wrapper(cls, fig):
@@ -281,12 +293,13 @@ class Plotly(ModelPane):
 
         For #382: Map datetime elements to strings.
         """
-        layout = dict(fig._layout)
+        # Use dict.copy to avoid copying unnecessary structure (faster than dict constructor)
+        layout = fig._layout.copy() if hasattr(fig._layout, 'copy') else dict(fig._layout)
         data = [cls._convert_trace(trace) for trace in fig._data]
         if 'shapes' in layout:
-            layout['shapes'] = [
-                cls._convert_trace(shape) for shape in layout['shapes']
-            ]
+            # Reuse the transformation, avoiding repeated lookups
+            shapes = layout['shapes']
+            layout['shapes'] = [cls._convert_trace(shape) for shape in shapes]
         return {'data': data, 'layout': layout}
 
     def _init_params(self):
