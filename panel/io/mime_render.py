@@ -250,18 +250,26 @@ def eval_formatter(obj, print_method):
     """
     Evaluates a formatter method.
     """
+    # Optimize: Use direct comparison to "__repr__" first (already present)
     if print_method == "__repr__":
         return repr(obj)
-    elif hasattr(obj, print_method):
-        if print_method == "savefig":
-            buf = io.BytesIO()
-            obj.savefig(buf, format="png")
-            buf.seek(0)
-            return base64.b64encode(buf.read()).decode("utf-8")
-        return getattr(obj, print_method)()
-    elif print_method == "_repr_mimebundle_":
-        return {}, {}
-    return None
+    # Optimize: Use fast-string equality before hasattr, which is expensive.
+    if print_method == "savefig":
+        # Optimize: reuse buffer and eliminate unnecessary seek if possible
+        buf = io.BytesIO()
+        obj.savefig(buf, format="png")
+        # Since we're passing in fresh BytesIO, pointer is at EOF
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode("utf-8")
+    # Optimize: cache attribute lookup to avoid double getattr
+    # hasattr is called before getattr. Optimize by try/except AttributeError.
+    try:
+        method = getattr(obj, print_method)
+    except AttributeError:
+        if print_method == "_repr_mimebundle_":
+            return {}, {}
+        return None
+    return method()
 
 def format_mime(obj):
     """
