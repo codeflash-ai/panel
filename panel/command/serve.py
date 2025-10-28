@@ -66,11 +66,10 @@ def parse_var(s):
     or
         foo="hello world"
     """
-    items = s.split('=')
-    key = items[0].strip() # we remove blanks around keys, as is logical
-    if len(items) > 1:
-        # rejoin the rest:
-        value = '='.join(items[1:])
+    parts = s.split('=', 1)
+    key = parts[0].strip() # we remove blanks around keys, as is logical
+    if len(parts) > 1:
+        value = parts[1]
     return (key, value)
 
 
