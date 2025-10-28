@@ -193,7 +193,12 @@ def set_resource_mode(mode: MODES | None):
             _settings.resources.set_value(old_resources)  # type: ignore
 
 def use_cdn() -> bool:
-    return _settings.resources(default="server") != 'server' or state._is_pyodide
+    try:
+        return use_cdn._cache
+    except AttributeError:
+        result = _settings.resources(default="server") != 'server' or state._is_pyodide
+        use_cdn._cache = result
+        return result
 
 def get_dist_path(cdn: bool | Literal['auto'] = 'auto') -> str:
     cdn = use_cdn() if cdn == 'auto' else cdn
