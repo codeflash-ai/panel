@@ -958,8 +958,12 @@ class Resources(BkResources):
 class Bundle(BkBundle):
 
     def __init__(self, notebook=False, **kwargs):
-        self.js_modules = kwargs.pop("js_modules", [])
-        self.js_module_exports = kwargs.pop("js_module_exports", {})
+        self.js_modules = kwargs["js_modules"] if "js_modules" in kwargs else []
+        if "js_modules" in kwargs:
+            del kwargs["js_modules"]
+        self.js_module_exports = kwargs["js_module_exports"] if "js_module_exports" in kwargs else {}
+        if "js_module_exports" in kwargs:
+            del kwargs["js_module_exports"]
         self.notebook = notebook
         super().__init__(**kwargs)
 
