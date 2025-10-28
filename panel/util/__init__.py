@@ -41,6 +41,10 @@ from .parameters import (  # noqa
     recursive_parameterized,
 )
 
+_pattern1 = re.compile(r'([a-z0-9])([A-Z])')
+
+_pattern2 = re.compile(r'([A-Z]+)([A-Z][a-z0-9])')
+
 log = logging.getLogger('panel.util')
 
 bokeh_version = Version(Version(bokeh.__version__).base_version)
@@ -541,6 +545,6 @@ def prefix_length(a: str, b: str) -> int:
 def camel_to_kebab(name):
     # Use regular expressions to insert a hyphen before each uppercase letter not at the start,
     # and between a lowercase and uppercase letter.
-    kebab_case = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
-    kebab_case = re.sub(r'([A-Z]+)([A-Z][a-z0-9])', r'\1-\2', kebab_case)
+    kebab_case = _pattern1.sub(r'\1-\2', name)
+    kebab_case = _pattern2.sub(r'\1-\2', kebab_case)
     return kebab_case.lower()
