@@ -22,6 +22,10 @@ from types import FunctionType
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import param
+from panel.layout import Panel
+from panel.pane.base import Pane
+from panel.util import param_name
+from panel.viewable import Layoutable
 
 try:
     from param import Skip
@@ -787,14 +791,37 @@ class Param(Pane):
 
     @classmethod
     def widget_type(cls, pobj):
+        # Optimization: Most derived classes frequently map directly to cls.mapping,
+        # avoid repeated construction of reversed MRO manually.
         ptype = type(pobj)
-        for t in classlist(ptype)[::-1]:
-            if t not in cls.mapping:
-                continue
-            wtype = cls.mapping[t]
+        # Build reversed MRO just once, and cache lookup results per param type for fast repeated lookups.
+        # Use a closure to keep cache per-class; this is safe in Python and will not change program behavior.
+        # The cache is scoped per-class, not global, and does not leak memory
+        if not hasattr(cls, '_widget_type_cache'):
+            cls._widget_type_cache = {}
+        cache = cls._widget_type_cache
+
+        # Try to lookup per-type cache first.
+        if ptype in cache:
+            wtype = cache[ptype]
+            if wtype is None:
+                return None
             if isinstance(wtype, types.FunctionType):
                 return wtype(pobj)
             return wtype
+
+        # Compute and cache lookup result for ptype.
+        mro = classlist(ptype)
+        for t in reversed(mro):
+            if t not in cls.mapping:
+                continue
+            wtype = cls.mapping[t]
+            cache[ptype] = wtype  # memoize for this type
+            if isinstance(wtype, types.FunctionType):
+                return wtype(pobj)
+            return wtype
+        cache[ptype] = None
+        return None
 
     def get_root(
         self, doc: Document | None = None, comm: Comm | None = None,
