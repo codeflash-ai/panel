@@ -212,7 +212,9 @@ def process_raw_css(raw_css: list[str]) -> list[str]:
     """
     Converts old-style Bokeh<3 compatible CSS to Bokeh 3 compatible CSS.
     """
-    return [BK_PREFIX_RE.sub('.', css) for css in raw_css]
+    # Pre-compile replacement if pattern is found, for faster repeated substitution
+    sub = BK_PREFIX_RE.sub
+    return [sub('.', css) if '.bk.' in css else css for css in raw_css]
 
 @lru_cache(maxsize=None)
 def loading_css(loading_spinner: str, color: str, max_height: int):
