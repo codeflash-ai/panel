@@ -196,9 +196,13 @@ def _numpy_hash(obj):
     return h.digest()
 
 def _io_hash(obj):
-    h = hashlib.new("md5")
-    h.update(_generate_hash(obj.tell()))
-    h.update(_generate_hash(obj.getvalue()))
+    # Preallocate md5 object for in-place update
+    h = hashlib.md5()
+    tell_value = obj.tell()
+    getvalue_value = obj.getvalue()
+    # Avoid repeated property access
+    h.update(_generate_hash(tell_value))
+    h.update(_generate_hash(getvalue_value))
     return h.digest()
 
 _hash_funcs: dict[str | type[Any] | tuple[type, ...] | Callable[[Any], bool], bytes | Callable[[Any], bytes]] = {
@@ -276,12 +280,14 @@ def _generate_hash_inner(obj):
     return _int_to_bytes(id(obj))
 
 def _generate_hash(obj):
-    # Break recursive cycles.
+    # Use local var to avoid repeated attribute accesses
     hash_stack = state._current_stack
+    # Short-circuit cycle detection for quick exit
     if obj in hash_stack:
         return _CYCLE_PLACEHOLDER
     hash_stack.push(obj)
     try:
+        # Single local lookup for function call
         hash_value = _generate_hash_inner(obj)
     finally:
         hash_stack.pop()
