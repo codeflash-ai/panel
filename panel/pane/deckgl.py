@@ -205,17 +205,26 @@ class DeckGL(ModelPane):
 
     @classmethod
     def _add_pydeck_encoders(cls):
+        # Fast exit if encoders are already set or pydeck is not imported
         if cls._pydeck_encoders_are_added or 'pydeck' not in sys.modules:
             return
 
+        # Imports only once needed, but cached statically here for reuse
         from pydeck.types import Function, String
-        def pydeck_string_encoder(obj, serializer):
-            return obj.value
-        def pydeck_function_encoder(obj, serializer):
-            return obj.serialize()
 
-        Serializer._encoders[String] = pydeck_string_encoder
-        Serializer._encoders[Function] = pydeck_function_encoder
+        # Define encoder functions only once, cache as staticmethod/attributes of class for reuse
+        if not hasattr(cls, '_pydeck_string_encoder'):
+            def pydeck_string_encoder(obj, serializer):
+                return obj.value
+            cls._pydeck_string_encoder = pydeck_string_encoder
+
+        if not hasattr(cls, '_pydeck_function_encoder'):
+            def pydeck_function_encoder(obj, serializer):
+                return obj.serialize()
+            cls._pydeck_function_encoder = pydeck_function_encoder
+
+        Serializer._encoders[String] = cls._pydeck_string_encoder
+        Serializer._encoders[Function] = cls._pydeck_function_encoder
         cls._pydeck_encoders_are_added = True
 
     def _transform_deck_object(self, obj):
