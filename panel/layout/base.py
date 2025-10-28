@@ -558,6 +558,9 @@ class NamedListLike(param.Parameterized):
         # ALERT: Ensure that name update happens first, should be
         #        replaced by watch precedence support in param
         self.param.watchers['objects']['value'].reverse()
+        # Cache the length of self.objects for faster access in __len__
+        self._objects_len = len(self.objects)
+        self.param.watch(self._update_objects_len, 'objects')
 
     def _to_object_and_name(self, item):
         from ..pane import panel
@@ -601,7 +604,7 @@ class NamedListLike(param.Parameterized):
         return self.objects[index]
 
     def __len__(self) -> int:
-        return len(self.objects)
+        return self._objects_len
 
     def __iter__(self) -> Iterator[Viewable]:
         yield from self.objects
@@ -763,6 +766,9 @@ class NamedListLike(param.Parameterized):
         new_objects.reverse()
         self._names.reverse()
         self.objects = new_objects
+
+    def _update_objects_len(self, event: param.parameterized.Event) -> None:
+        self._objects_len = len(event.new)
 
 
 class ListPanel(ListLike, Panel):
