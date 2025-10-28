@@ -111,10 +111,14 @@ def _slice_hash(x: slice) -> bytes:
     return _container_hash([x.start, x.step, x.stop])
 
 def _partial_hash(obj: Any) -> bytes:
+    # Avoid repeated attribute lookups by using local variables.
     h = hashlib.new("md5")
-    h.update(_generate_hash(obj.args))
-    h.update(_generate_hash(obj.func))
-    h.update(_generate_hash(obj.keywords))
+    args = obj.args
+    func = obj.func
+    keywords = obj.keywords
+    h.update(_generate_hash(args))
+    h.update(_generate_hash(func))
+    h.update(_generate_hash(keywords))
     return h.digest()
 
 def _pandas_hash(obj: Any) -> bytes:
@@ -278,13 +282,15 @@ def _generate_hash_inner(obj):
 def _generate_hash(obj):
     # Break recursive cycles.
     hash_stack = state._current_stack
-    if obj in hash_stack:
+    # Use id(obj) instead of comparing obj directly for O(1) lookup in hash_stack.
+    obj_id = id(obj)
+    if obj_id in hash_stack._stack:
         return _CYCLE_PLACEHOLDER
-    hash_stack.push(obj)
+    hash_stack._stack[obj_id] = obj
     try:
         hash_value = _generate_hash_inner(obj)
     finally:
-        hash_stack.pop()
+        hash_stack._stack.pop(obj_id)
     return hash_value
 
 def _key(obj):
