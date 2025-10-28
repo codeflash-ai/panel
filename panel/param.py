@@ -22,6 +22,7 @@ from types import FunctionType
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import param
+from panel.config import config
 
 try:
     from param import Skip
@@ -1128,17 +1129,21 @@ class ParamFunction(ParamRef):
 
     @classmethod
     def applies(cls, obj: Any, **kwargs) -> float | bool | None:
-        if isinstance(obj, types.FunctionType):
-            if hasattr(obj, '_dinfo'):
-                return True
-            if (
-                kwargs.get('defer_load') or cls.param.defer_load.default or
-                (cls.param.defer_load.default is None and config.defer_load) or
-                iscoroutinefunction(obj)
-            ):
-                return True
-            return None
-        return False
+        if not isinstance(obj, types.FunctionType):
+            return False
+        # Check _dinfo attribute first, faster than querying defer_load
+        if hasattr(obj, '_dinfo'):
+            return True
+        # Store defer_load default locally to avoid multiple attribute lookups
+        defer_load_default = cls.param.defer_load.default
+        if (
+            kwargs.get('defer_load')
+            or defer_load_default
+            or (defer_load_default is None and config.defer_load)
+            or iscoroutinefunction(obj)
+        ):
+            return True
+        return None
 
     @classmethod
     def eval(self, ref):
