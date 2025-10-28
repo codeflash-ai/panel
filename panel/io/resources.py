@@ -216,12 +216,13 @@ def process_raw_css(raw_css: list[str]) -> list[str]:
 
 @lru_cache(maxsize=None)
 def loading_css(loading_spinner: str, color: str, max_height: int):
-    return textwrap.dedent(f"""
-    :host(.pn-loading):before, .pn-loading:before {{
-      background-color: {color};
-      mask-size: auto calc(min(50%, {max_height}px));
-      -webkit-mask-size: auto calc(min(50%, {max_height}px));
-    }}""")
+    return (
+        f"\n:host(.pn-loading):before, .pn-loading:before {{\n"
+        f"  background-color: {color};\n"
+        f"  mask-size: auto calc(min(50%, {max_height}px));\n"
+        f"  -webkit-mask-size: auto calc(min(50%, {max_height}px));\n"
+        f"}}"
+    )
 
 def resolve_custom_path(
     obj, path: str | os.PathLike, relative: bool = False
