@@ -134,18 +134,22 @@ class DeckGL(ModelPane):
 
     @classmethod
     def applies(cls, obj: Any) -> float | bool | None:
-        if cls.is_pydeck(obj):
-            return 0.8
-        elif isinstance(obj, (dict, str)):
+        if isinstance(obj, (dict, str)):
             return 0
+        elif cls.is_pydeck(obj):
+            return 0.8
         return False
 
     @classmethod
     def is_pydeck(cls, obj):
-        if 'pydeck' in sys.modules:
-            import pydeck
-            return isinstance(obj, pydeck.bindings.deck.Deck)
-        return False
+        if not hasattr(cls, "_pydeck_deck_class"):
+            if 'pydeck' in sys.modules:
+                pydeck_module = sys.modules['pydeck']
+                cls._pydeck_deck_class = pydeck_module.bindings.deck.Deck
+            else:
+                cls._pydeck_deck_class = None
+        
+        return cls._pydeck_deck_class is not None and isinstance(obj, cls._pydeck_deck_class)
 
     @classmethod
     def _process_data(cls, data):
