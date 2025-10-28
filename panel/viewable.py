@@ -502,15 +502,27 @@ class MimeRenderMixin:
                 doc.hold(held)
 
     def _on_error(self, ref: str, error: Exception) -> None:
-        if ref not in state._handles or config.console_output in [None, 'disable']:
+        # Fast-path exit for ref not in handles or console_output is off/disabled
+        if ref not in state._handles:
             return
+        console_output = config.console_output
+        if console_output is None or console_output == 'disable':
+            return
+
         handle, accumulator = state._handles[ref]
-        formatted = '\n<pre>'+escape(traceback.format_exc())+'</pre>\n'
-        if config.console_output == 'accumulate':
+        # Avoid string concatenation, use f-string for slightly better performance and readability
+        formatted = f'\n<pre>{escape(traceback.format_exc())}</pre>\n'
+
+        if console_output == 'accumulate':
             accumulator.append(formatted)
-        elif config.console_output == 'replace':
+        elif console_output == 'replace':
             accumulator[:] = [formatted]
+
+        # Fast bool check for non-empty accumulator
         if accumulator:
+            # Avoid repeated '\n'.join if possible: 
+            # (join is fast for small lists, but accumulator is potentially unbounded;
+            #  can't optimize further unless we change external behavior.)
             handle.update({'text/html': '\n'.join(accumulator)}, raw=True)
 
     def _on_stdout(self, ref: str, stdout: Any) -> None:
