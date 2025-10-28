@@ -738,29 +738,61 @@ class Resources(BkResources):
         """
         Computes relative and absolute paths for resources.
         """
+        # Optimize repeated operations and avoid unnecessary str/replaces where possible.
         new_resources = []
         version_suffix = f'?v={JS_VERSION}'
-        cdn_base = f'{config.npm_cdn}/@holoviz/panel@{JS_VERSION}/dist/'
+        npm_cdn = config.npm_cdn
+        cdn_base = f'{npm_cdn}/@holoviz/panel@{JS_VERSION}/dist/'
+        mode = self.mode
+        server_mode = (mode == "server")
+        cdn_mode = (mode == "cdn")
+        root_url = self.root_url
+        state_base_url = state.base_url
+        state_rel_path = state.rel_path
+        local_dist = LOCAL_DIST
+        cdn_dist = CDN_DIST
+
+        # Precompute tuples for startswith string operations
+        base_prefixes = (state_base_url, "static/")
+        css_scheme = ('http:', 'https:')
+
+        append = new_resources.append
+
         for resource in resources:
+            # Avoid more checks than necessary; only cast to str if needed
             if not isinstance(resource, str):
                 resource = str(resource)
-            resource = resource.replace('https://unpkg.com', config.npm_cdn)
+
+            # Only do the replace if 'https://unpkg.com' is actually present
+            if 'https://unpkg.com' in resource:
+                resource = resource.replace('https://unpkg.com', npm_cdn)
+
+            # Only do the replace if resource starts with cdn_base
             if resource.startswith(cdn_base):
-                resource = resource.replace(cdn_base, CDN_DIST)
-            if self.mode == 'cdn':
+                resource = resource.replace(cdn_base, cdn_dist, 1)
+
+            if cdn_mode:
                 resource = resolve_resource_cdn(resource)
-            if self.mode == 'server':
-                resource = resource.replace(CDN_DIST, LOCAL_DIST)
-            if resource.startswith((state.base_url, "static/")):
-                if resource.startswith(state.base_url):
-                    resource = resource[len(state.base_url):]
-                if state.rel_path:
-                    resource = f'{state.rel_path}/{resource}'
-                elif self.absolute and self.mode == 'server':
-                    resource = f'{self.root_url}{resource}'
-            if resource.endswith('.css') and not resource.startswith(('http:', 'https:')):
+            elif server_mode and cdn_dist in resource:
+                resource = resource.replace(cdn_dist, local_dist, 1)
+
+            # If path startswith base_url or static/
+            if resource.startswith(base_prefixes):
+                # Remove base_url, if present
+                if resource.startswith(state_base_url):
+                    resource = resource[len(state_base_url):]
+
+                # Add rel_path if present, else make it absolute if necessary
+                if state_rel_path:
+                    resource = f'{state_rel_path}/{resource}'
+                elif self.absolute and server_mode:
+                    resource = f'{root_url}{resource}'
+
+            # Only consider resources ending with .css and not starting with http/https
+            if resource.endswith('.css') and not resource.startswith(css_scheme):
                 resource += version_suffix
-            new_resources.append(resource)
+
+            append(resource)
         return new_resources
 
     def clone(self, *, components=None) -> Resources:
