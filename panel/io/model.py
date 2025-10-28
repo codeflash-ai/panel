@@ -151,8 +151,12 @@ def bokeh_repr(obj: Model, depth: int = 0, ignored: Iterable[str] | None = None)
     if ignored is None:
         ignored = _DEFAULT_IGNORED_REPR
 
-    from ..viewable import Viewable
-    if isinstance(obj, Viewable):
+    # Cache import to avoid repeated import overhead
+    if not hasattr(bokeh_repr, '_viewable'):
+        from ..viewable import Viewable
+        bokeh_repr._viewable = Viewable
+    
+    if isinstance(obj, bokeh_repr._viewable):
         obj = obj.get_root(Document())
 
     r = ""
