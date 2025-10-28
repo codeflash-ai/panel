@@ -370,11 +370,23 @@ def parse_timedelta(time_str: str) -> dt.timedelta | None:
     parts = _period_regex.match(time_str)
     if not parts:
         return None
-    parts_dict = parts.groupdict()
+
+    # Micro-optimization: Inline parts.groupdict() and predefine the possible fields to avoid unnecessary dict allocation, loop, and checks.
+    # The regex always names: 'weeks', 'days', 'hours', 'minutes', 'seconds'
+    g = parts.group
+    # Only include fields that matched and are not None.
+    # This avoids the .items() loop and 'if p' check for every possible key.
     time_params = {}
-    for (name, p) in parts_dict.items():
-        if p:
-            time_params[name] = float(p)
+    if (w := g('weeks')):      time_params['weeks']   = float(w)
+    if (d := g('days')):       time_params['days']    = float(d)
+    if (h := g('hours')):      time_params['hours']   = float(h)
+    if (m := g('minutes')):    time_params['minutes'] = float(m)
+    if (s := g('seconds')):    time_params['seconds'] = float(s)
+
+    # Fast path if nothing was matched, to avoid unnecessary dt call
+    if not time_params:
+        return dt.timedelta()
+
     return dt.timedelta(**time_params)
 
 
