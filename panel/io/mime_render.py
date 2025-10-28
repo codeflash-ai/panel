@@ -24,6 +24,11 @@ from contextlib import redirect_stderr, redirect_stdout
 from html import escape
 from textwrap import dedent
 from typing import IO, Any
+import markdown
+
+_markdown_converter = markdown.Markdown(
+    extensions=["extra", "smarty", "codehilite"], output_format='html5'
+)
 
 #---------------------------------------------------------------------
 # Import API
@@ -213,10 +218,8 @@ def render_javascript(value, meta, mime):
     return f'<script>{value}</script>', 'text/html'
 
 def render_markdown(value, meta, mime):
-    import markdown
-    return (markdown.markdown(
-        value, extensions=["extra", "smarty", "codehilite"], output_format='html5'
-    ), 'text/html')
+    _markdown_converter.reset()
+    return (_markdown_converter.convert(value), 'text/html')
 
 def render_pdf(value, meta, mime):
     data = value.encode('utf-8')
