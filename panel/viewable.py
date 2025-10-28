@@ -1235,11 +1235,19 @@ class ChildDict(param.Dict):
 
 
 def _is_viewable_class_selector(class_selector: param.ClassSelector) -> bool:
-    if not class_selector.class_:
+    class_ = class_selector.class_
+    if not class_:
         return False
-    if isinstance(class_selector.class_, tuple):
-        return all(issubclass(cls, Viewable) for cls in class_selector.class_)
-    return issubclass(class_selector.class_, Viewable)
+    # Fast path: if it's a single class
+    if not isinstance(class_, tuple):
+        return issubclass(class_, Viewable)
+    # Use tuple all at C-speed for longer tuples
+    # Use generator, no list comp, no inner function call
+    viewable = Viewable
+    for cls in class_:
+        if not issubclass(cls, viewable):
+            return False
+    return True
 
 def _is_viewable_list(param_list: param.List) -> bool:
     if not param_list.item_type:
