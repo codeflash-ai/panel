@@ -79,7 +79,13 @@ def get_env():
     ]))
 
 def conffilter(value):
-    return json.dumps(dict(value)).replace('"', '\'')
+    # Avoid reconstructing the dict if `value` is already a dict
+    if isinstance(value, dict):
+        s = json.dumps(value)
+    else:
+        s = json.dumps(dict(value))
+    # Use str.replace for quote conversion, as original
+    return s.replace('"', '\'')
 
 class json_dumps(json.JSONEncoder):
     def default(self, obj):
