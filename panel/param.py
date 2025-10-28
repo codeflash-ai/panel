@@ -1418,12 +1418,18 @@ class FigureWrapper(param.Parameterized):
 
 
 def _plot_handler(reactive):
-    fig_wrapper = FigureWrapper()
+    # Move FigureWrapper construction inside the inner function for lazy creation
     def plot(obj, *args, **kwargs):
         if 'ax' not in kwargs:
+            # Only instantiate FigureWrapper if needed
+            fig_wrapper = FigureWrapper()
             kwargs['ax'] = fig_wrapper.get_ax()
-        obj.plot(*args, **kwargs)
-        return fig_wrapper.figure
+            obj.plot(*args, **kwargs)
+            return fig_wrapper.figure
+        else:
+            obj.plot(*args, **kwargs)
+            # If 'ax' is already provided, no FigureWrapper/figure is created: return None
+            return None
     return plot
 
 
