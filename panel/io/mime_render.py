@@ -219,10 +219,8 @@ def render_markdown(value, meta, mime):
     ), 'text/html')
 
 def render_pdf(value, meta, mime):
-    data = value.encode('utf-8')
-    base64_pdf = base64.b64encode(data).decode("utf-8")
-    src = f"data:application/pdf;base64,{base64_pdf}"
-    return f'<embed src="{src}" width="100%" height="100%" type="application/pdf">', 'text/html'
+    base64_pdf = base64.b64encode(value.encode('utf-8')).decode("utf-8")
+    return f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="100%" type="application/pdf">', 'text/html'
 
 def render_plotly(value, meta, mime):
     from ..pane import Plotly
