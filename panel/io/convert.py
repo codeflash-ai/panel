@@ -153,7 +153,14 @@ def make_index(files, title=None, manifest=True):
         apple_icon = 'images/apple-touch-icon.png'
     else:
         manifest = favicon = apple_icon = None
-    items = {label: './'+os.path.basename(f) for label, f in sorted(files.items())}
+
+    # Optimization: Use local variables to avoid repeated attribute lookups,
+    # and pre-bind built-in functions for tight loops.
+    basename = os.path.basename
+    # Avoid sorting a list of tuple but sort keys, then access dict for values (faster)
+    items = {label: './' + basename(files[label]) for label in sorted(files)}
+    
+    # No optimization possible for INDEX_TEMPLATE.render itself
     return INDEX_TEMPLATE.render(
         items=items, manifest=manifest, apple_icon=apple_icon,
         favicon=favicon, title=title, PANEL_CDN=CDN_DIST
