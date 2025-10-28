@@ -348,7 +348,7 @@ class JupyterCommJSBinary(JupyterCommJS):
 
     @classmethod
     def decode(cls, msg):
-        buffers = {i: v for i, v in enumerate(msg['buffers'])}
+        buffers = dict(enumerate(msg['buffers']))
         return dict(msg['content']['data'], _buffers=buffers)
 
 class JupyterCommManagerBinary(_JupyterCommManager):
