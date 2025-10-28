@@ -168,11 +168,11 @@ def _is_1dim_int_or_float_tensor(obj: Any)->bool:
     )
 
 def _is_1dim_int_or_float_ndarray(obj: Any)->bool:
-    return (
-        isinstance(obj, np.ndarray) and
-        obj.ndim==1 and
-        obj.dtype in _VALID_NUMPY_DTYPES_FOR_AUDIO
-    )
+    if not isinstance(obj, np.ndarray):
+        return False
+    if obj.ndim != 1:
+        return False
+    return obj.dtype.type in _VALID_NUMPY_DTYPES_FOR_AUDIO
 
 def _detect_audio_format(data: bytes) -> str | None:
     """
