@@ -64,7 +64,13 @@ def to_camel_case(snake_case: str) -> str:
 
 
 def lower_first_letter(s: str) -> str:
-    return s[:1].lower() + s[1:] if s else ''
+    if not s:
+        return ''
+    first = s[0]
+    # Fast path if already lowercase or not alpha (avoids .lower() + concatenation)
+    if not first.isupper():
+        return s
+    return first.lower() + s[1:]
 
 
 def recurse_data(data):
