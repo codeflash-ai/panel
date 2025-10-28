@@ -1242,11 +1242,15 @@ def _is_viewable_class_selector(class_selector: param.ClassSelector) -> bool:
     return issubclass(class_selector.class_, Viewable)
 
 def _is_viewable_list(param_list: param.List) -> bool:
-    if not param_list.item_type:
+    item_type = param_list.item_type
+    if not item_type:
         return False
-    if isinstance(param_list.item_type, tuple):
-        return all(issubclass(cls, Viewable) for cls in param_list.item_type)
-    return issubclass(param_list.item_type, Viewable)
+    if type(item_type) is tuple:
+        for cls in item_type:
+            if not issubclass(cls, Viewable):
+                return False
+        return True
+    return issubclass(item_type, Viewable)
 
 
 def is_viewable_param(parameter: param.Parameter) -> bool:
