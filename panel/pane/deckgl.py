@@ -52,15 +52,19 @@ def to_camel_case(snake_case: str) -> str:
     snake_case : str
         Snake-cased string (e.g., "snake_cased") to be converted to camel-case (e.g., "camelCase")
     """
-    output_str = ''
+    # Use list to collect characters for more efficient string assembly
+    output_chars = []
     should_upper_case = False
     for c in snake_case:
         if c == '_':
             should_upper_case = True
             continue
-        output_str = output_str + c.upper() if should_upper_case else output_str + c
-        should_upper_case = False
-    return output_str
+        if should_upper_case:
+            output_chars.append(c.upper())
+            should_upper_case = False
+        else:
+            output_chars.append(c)
+    return ''.join(output_chars)
 
 
 def lower_first_letter(s: str) -> str:
