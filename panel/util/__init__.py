@@ -41,6 +41,8 @@ from .parameters import (  # noqa
     recursive_parameterized,
 )
 
+_pattern = re.compile(r"([\d]+\.[\d]+\.[\d]+(?:a|rc|b)?[\d]*)")
+
 log = logging.getLogger('panel.util')
 
 bokeh_version = Version(Version(bokeh.__version__).base_version)
@@ -401,8 +403,7 @@ def base_version(version: str) -> str:
     Return the version passed as input if no match is found with the pattern.
     """
     # look at the start for e.g. 0.13.0, 0.13.0rc1, 0.13.0a19, 0.13.0b10
-    pattern = r"([\d]+\.[\d]+\.[\d]+(?:a|rc|b)?[\d]*)"
-    match = re.match(pattern, version)
+    match = _pattern.match(version)
     if match:
         return match.group()
     else:
