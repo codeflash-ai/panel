@@ -16,6 +16,8 @@ from ..io.resources import CDN_DIST
 from ..pane.image import ImageBase
 from ..viewable import Viewable
 
+_ALPHA_NUMERIC_REGEX = re.compile(r"\W+")
+
 Avatar = Union[str, BytesIO, bytes, ImageBase]
 AvatarDict = dict[str, Avatar]
 
@@ -25,7 +27,7 @@ def to_alpha_numeric(user: str) -> str:
     Convert the user name to an alpha numeric string,
     removing all non-alphanumeric characters.
     """
-    return re.sub(r"\W+", "", user).lower()
+    return _ALPHA_NUMERIC_REGEX.sub("", user).lower()
 
 
 def avatar_lookup(
@@ -43,9 +45,7 @@ def avatar_lookup(
     # update with the user input
     updated_avatars.update(avatars)
     # correct the keys to be alpha numeric
-    updated_avatars = {
-        to_alpha_numeric(key): value for key, value in updated_avatars.items()
-    }
+    updated_avatars = {to_alpha_numeric(key): value for key, value in updated_avatars.items()}
 
     # now lookup the avatar
     avatar = updated_avatars.get(alpha_numeric_key, avatar)
@@ -56,9 +56,7 @@ def avatar_lookup(
     return avatar
 
 
-def build_avatar_pane(
-    avatar: Any, css_classes: list[str], width: int = 15, height: int = 15
-) -> Image | HTML:
+def build_avatar_pane(avatar: Any, css_classes: list[str], width: int = 15, height: int = 15) -> Image | HTML:
     avatar_params = {
         "css_classes": css_classes,
         "width": width,
@@ -66,9 +64,7 @@ def build_avatar_pane(
     }
     if isinstance(avatar, Viewable):
         avatar_pane = avatar
-        avatar_params["css_classes"] = (
-            avatar_params.get("css_classes", []) + avatar_pane.css_classes
-        )
+        avatar_params["css_classes"] = avatar_params.get("css_classes", []) + avatar_pane.css_classes
         avatar_pane.param.update(avatar_params)
     elif not isinstance(avatar, (BytesIO, bytes)) and len(avatar) == 1:
         # single character
@@ -130,12 +126,13 @@ def get_obj_label(obj):
     Get the label for the object; defaults to specified object name;
     if unspecified, defaults to the type name.
     """
-    label = obj.name if hasattr(obj, "name") else ""
+    # Small optimization: avoid attribute lookup when possible
+    label = getattr(obj, "name", "")
     type_name = type(obj).__name__
     # If the name is just type + ID, simply use type
     # e.g. Column10241 -> Column
-    if label.startswith(type_name) or not label:
-        label = type_name
+    if not label or label.startswith(type_name):
+        return type_name
     return label
 
 
@@ -147,48 +144,56 @@ def serialize_recursively(
     """
     Recursively serialize the object to a string.
     """
-    if isinstance(obj, Iterable) and not isinstance(obj, str):
-        content = tuple(
-            serialize_recursively(
-                o,
-                prefix_with_viewable_label=prefix_with_viewable_label,
-                prefix_with_container_label=prefix_with_container_label,
-            )
-            for o in obj
-        )
-        if prefix_with_container_label:
-            if len(content) == 1:
-                return f"{get_obj_label(obj)}({content[0]})"
-            else:
-                indented_content = indent(",\n".join(content), prefix=" " * 4)
-                # outputs like:
-                # Row(
-                #   1,
-                #   "str",
-                # )
-                return f"{get_obj_label(obj)}(\n{indented_content}\n)"
-        else:
-            # outputs like:
-            # (1, "str")
-            return f"({', '.join(content)})"
 
+    # Fast path: avoid repeated type checks for common objects
+    # Only check for string once, and handle it up front
+    # This also helps avoid repeated isinstance checks in large iterables
+    if isinstance(obj, str):
+        return obj
+
+    if isinstance(obj, Iterable):
+        # Defensive: exclude str, which was already handled above
+        content = []
+        serialize = serialize_recursively  # localize for faster access
+        for o in obj:
+            content.append(
+                serialize(
+                    o,
+                    prefix_with_viewable_label=prefix_with_viewable_label,
+                    prefix_with_container_label=prefix_with_container_label,
+                )
+            )
+        content_tuple = tuple(content)
+        if prefix_with_container_label:
+            get_label = get_obj_label  # localize for faster access
+            obj_label = get_label(obj)
+            if len(content_tuple) == 1:
+                return f"{obj_label}({content_tuple[0]})"
+            else:
+                indented_content = indent(",\n".join(content_tuple), prefix=" " * 4)
+                return f"{obj_label}(\n{indented_content}\n)"
+        else:
+            return f"({', '.join(content_tuple)})"
+
+    # Now handle single objects.
+    # Resolve value or object attributes with a quick lookup
+    # Prioritize 'value' first, then 'object'
     string = obj
     if hasattr(obj, "value"):
         string = obj.value
     elif hasattr(obj, "object"):
         string = obj.object
 
-    if hasattr(string, "decode") or isinstance(string, BytesIO):
-        param.main.param.warning(
-            f"Serializing byte-like objects are not supported yet; "
-            f"using the label of the object as a placeholder for {obj}"
-        )
+    # Optimize: direct checking against BytesIO then decode
+    if isinstance(string, BytesIO) or hasattr(string, "decode"):
+        param.main.param.warning(f"Serializing byte-like objects are not supported yet; using the label of the object as a placeholder for {obj}")
         return get_obj_label(obj)
 
     if prefix_with_viewable_label and isinstance(obj, Viewable):
         label = get_obj_label(obj)
         string = f"{label}={string!r}"
 
+    # Avoid redundant conversion if string is already str
     if not isinstance(string, str):
         string = str(string)
 
