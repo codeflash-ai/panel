@@ -81,8 +81,12 @@ def save_dict(state, key=(), depth=0, max_depth=None, save_path='', load_path=No
 
 
 def get_watchers(reactive):
-    return [w for pwatchers in reactive.param.watchers.values()
-            for awatchers in pwatchers.values() for w in awatchers]
+    watchers = []
+    extend = watchers.extend
+    for pwatchers in reactive.param.watchers.values():
+        for awatchers in pwatchers.values():
+            extend(awatchers)
+    return watchers
 
 
 def param_to_jslink(model, widget):
