@@ -159,25 +159,32 @@ def capture_code_cell(cell):
 
     source = cell['source'].split('\n')
     for line in source[:-1]:
-        line = (line
-            .replace('get_ipython().run_line_magic', '')
-            .replace('get_ipython().magic', '')
-        )
+        # Only perform replacements if the search strings are present
+        if 'get_ipython().run_line_magic' in line or 'get_ipython().magic' in line:
+            line = (line
+                .replace('get_ipython().run_line_magic', '')
+                .replace('get_ipython().magic', '')
+            )
         code.append(line)
     cell_out = source[-1]
 
     # Expand last statement or expression until it can be parsed
     parses = False
+    cell_out_strip = cell_out.strip()
+    # Optimize repeated ast parsing in the loop
     while not parses:
         try:
-            if not cell_out.strip():
+            # Fast branch: skip parsing and exceptions if cell_out is blank
+            if not cell_out_strip:
                 raise SyntaxError
             ast.parse(cell_out)
             parses = True
         except SyntaxError:
             if not code:
                 break
+            # Concatenate popped line and re-evaluate whitespace only on new cell_out
             cell_out = f'{code.pop()}\n{cell_out}'
+            cell_out_strip = cell_out.strip()
 
     if not parses:
         # Skip cell if it cannot be parsed
@@ -186,40 +193,42 @@ def capture_code_cell(cell):
             f"and was skipped:\n\n{cell['source']}"
         )
         return code
-    elif cell_out.rstrip().endswith(';'):
-        # Do not record output of cells ending in semi-colon
+
+    # Do not record output of cells ending in semi-colon
+    # Reuse striped result for efficiency
+    if cell_out_strip.endswith(';'):
         code.append(cell_out)
         return code
 
-    # Remove code comments
-    if '#' in cell_out and not cell_out.count('\n'):
+    # Remove code comments if '#' is present and not multi-line
+    if '#' in cell_out and '\n' not in cell_out:
+        # To not remove "#000000"
         try:
-            # To not remove "#000000"
-            cell_tmp = cell_out[:cell_out.index('#')].rstrip()
+            hash_index = cell_out.index('#')
+            cell_tmp = cell_out[:hash_index].rstrip()
             ast.parse(cell_tmp)
             cell_out = cell_tmp
         except SyntaxError:
             pass
 
-    # Use eval mode to check whether cell ends in a statement or an
-    # expression that will be rendered
+    # Use eval mode for expression cells
     try:
         ast.parse(cell_out, mode='eval')
     except SyntaxError:
         code.append(cell_out)
         return code
 
-    # Capture cell outputs
+    # Capture cell outputs - use f-string directly to avoid quoted format
     cell_id = cell['id']
-    code.append(f"""\
-_pn__state._cell_outputs[{cell_id!r}].append(({cell_out}))
-for _cell__out in _CELL__DISPLAY:
-    _pn__state._cell_outputs[{cell_id!r}].append(_cell__out)
-_CELL__DISPLAY.clear()
-_fig__out = _get__figure()
-if _fig__out:
-    _pn__state._cell_outputs[{cell_id!r}].append(_fig__out)
-""")
+    code.append(
+        f"_pn__state._cell_outputs[{cell_id!r}].append(({cell_out}))\n"
+        f"for _cell__out in _CELL__DISPLAY:\n"
+        f"    _pn__state._cell_outputs[{cell_id!r}].append(_cell__out)\n"
+        f"_CELL__DISPLAY.clear()\n"
+        f"_fig__out = _get__figure()\n"
+        f"if _fig__out:\n"
+        f"    _pn__state._cell_outputs[{cell_id!r}].append(_fig__out)\n"
+    )
     return code
 
 def autoreload_handle_exception(handler, module, e):
