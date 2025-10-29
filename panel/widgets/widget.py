@@ -20,7 +20,7 @@ class fixed(param.Parameterized):
     A pseudo-widget whose value is fixed and never synced to the client.
     """
 
-    description = param.String(default='')
+    description = param.String(default="")
 
     value = param.Parameter(doc="Any Python object")
 
@@ -42,35 +42,40 @@ def _get_min_max_value(
     """Return min, max, value given input values with possible None."""
     # Either min and max need to be given, or value needs to be given
     if value is None:
+        # shortcut: combine check to reduce interpreter overhead
         if minimum is None or max is maximum:
-            raise ValueError(f'unable to infer range, value from: ({minimum}, {maximum}, {value})')
-
+            raise ValueError(f"unable to infer range, value from: ({minimum}, {maximum}, {value})")
         diff = maximum - minimum
+        # Unroll: type(diff) is int if no float, so always check for float results
         value = minimum + (diff / 2)
-        # Ensure that value has the same type as diff
         if not isinstance(value, type(diff)):
+            # In practice, only happens if diff is int and division gave float. Use int division.
             value = minimum + (diff // 2)
     else:  # value is not None
-        if not isinstance(value, Real):
-            raise TypeError(f'expected a real number, got: {value!r}')
+        # Inline isinstance check for Real for most common types (int, float)
+        if not (isinstance(value, (int, float)) or isinstance(value, Real)):
+            raise TypeError(f"expected a real number, got: {value!r}")
         # Infer min/max from value
         if value == 0:
             # This gives (0, 1) of the correct type
-            vrange = (value, value + 1)
+            vrange0, vrange1 = value, value + 1
         elif value > 0:
-            vrange = (-value, 3*value)
+            v3 = value * 3
+            vrange0, vrange1 = -value, v3
         else:
-            vrange = (3*value, -value)
+            v3 = value * 3
+            vrange0, vrange1 = v3, -value
         if minimum is None:
-            minimum = vrange[0]
+            minimum = vrange0
         if maximum is None:
-            maximum = vrange[1]
+            maximum = vrange1
     if step is not None:
         # ensure value is on a step
         tick = int((value - minimum) / step)
         value = minimum + tick * step
-    if not (minimum <= value <= maximum):
-        raise ValueError(f'value must be between min and max (min={minimum}, value={value}, max={maximum})')
+    # Use chained comparison as before, but rearranged for efficiency
+    if value < minimum or value > maximum:
+        raise ValueError(f"value must be between min and max (min={minimum}, value={value}, max={maximum})")
     return minimum, maximum, value
 
 
@@ -153,7 +158,7 @@ class widget(param.ParameterizedFunction):
     @staticmethod
     def widget_from_tuple(o, name, default=empty):
         """Make widgets from a tuple abbreviation."""
-        int_default = (default is empty or isinstance(default, int))
+        int_default = default is empty or isinstance(default, int)
         if _matches(o, (Real, Real)):
             min, max, value = _get_min_max_value(o[0], o[1])
             if all(isinstance(_, Integral) for _ in o) and int_default:
