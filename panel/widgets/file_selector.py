@@ -138,17 +138,35 @@ class RemoteFileProvider(BaseFileProvider):
         return self.fs.isdir(path)
 
     def ls(self, path: str, file_pattern: str = "[!.]*"):
-        if not path.endswith(self.sep):
-            path += self.sep
-        raw_ls = self.fs.ls(path, detail=True)
-        prefix = ''
-        if scheme:= urlparse(path).scheme:
+        # Avoid repeated path concatenation and urlparse
+        sep = self.sep
+        if not path.endswith(sep):
+            path += sep
+
+        # Cache prefix computation before loops
+        scheme = urlparse(path).scheme
+        if scheme:
             prefix = f'{scheme}://'
-        dirs_fn = lambda x: f"{prefix}{x}{self.sep}" if ":" not in x else f"{x}{self.sep}"
-        dirs = [dirs_fn(d['name']) for d in raw_ls if d['type'] == 'directory' ]
-        raw_glob = self.fs.glob(path+file_pattern, detail=True)
-        files_fn = lambda x: f"{prefix}{x}" if ":" not in x else x
-        files = [files_fn(d['name']) for d in raw_glob.values() if d['type'] == 'file' ]
+            colon_check = False
+        else:
+            prefix = ''
+            colon_check = True  # All `:` found in an entry means an alternative form
+        
+        # Use generator expressions to avoid temporary lists and improve memory
+        raw_ls = self.fs.ls(path, detail=True)
+        if colon_check:
+            dirs = [f"{x['name']}{sep}" for x in raw_ls if x['type'] == 'directory']
+        else:
+            dirs = [f"{prefix}{x['name']}{sep}" if ":" not in x['name'] else f"{x['name']}{sep}"
+                    for x in raw_ls if x['type'] == 'directory']
+
+        raw_glob = self.fs.glob(path + file_pattern, detail=True)
+        # .values() is a view, but we can iterate directly
+        if colon_check:
+            files = [x['name'] for x in raw_glob.values() if x['type'] == 'file']
+        else:
+            files = [f"{prefix}{x['name']}" if ":" not in x['name'] else x['name']
+                     for x in raw_glob.values() if x['type'] == 'file']
         return dirs, files
 
 
