@@ -1,6 +1,7 @@
 """
 Utilities for manipulating bokeh models.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -13,7 +14,9 @@ import numpy as np
 from bokeh.core.serialization import Serializer
 from bokeh.document import Document
 from bokeh.document.events import (
-    ColumnDataChangedEvent, DocumentChangedEvent, DocumentPatchedEvent,
+    ColumnDataChangedEvent,
+    DocumentChangedEvent,
+    DocumentPatchedEvent,
     ModelChangedEvent,
 )
 from bokeh.document.json import PatchJson
@@ -26,9 +29,10 @@ from .state import state
 if TYPE_CHECKING:
     from bokeh.protocol.message import Message
 
-#---------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Private API
-#---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+
 
 class comparable_array(np.ndarray):
     """
@@ -41,6 +45,7 @@ class comparable_array(np.ndarray):
     def __ne__(self, other: Any) -> bool:
         return not np.array_equal(self, other, equal_nan=True)
 
+
 def monkeypatch_events(events: Sequence[DocumentChangedEvent]) -> None:
     """
     Patch events applies patches to events that are to be dispatched
@@ -48,32 +53,32 @@ def monkeypatch_events(events: Sequence[DocumentChangedEvent]) -> None:
     """
     for e in events:
         # Patch ColumnDataChangedEvents which reference non-existing columns
-        if isinstance(getattr(e, 'hint', None), ColumnDataChangedEvent):
-            e.hint.cols = None # type: ignore
+        if isinstance(getattr(e, "hint", None), ColumnDataChangedEvent):
+            e.hint.cols = None  # type: ignore
         # Patch ModelChangedEvents which change an array property (see https://github.com/bokeh/bokeh/issues/11735)
-        elif (isinstance(e, ModelChangedEvent) and isinstance(e.model, DataModel) and
-              isinstance(e.new, np.ndarray)):
-                new_array = comparable_array(e.new.shape, e.new.dtype, e.new)
-                e.new = new_array
-                e.serializable_new = new_array
+        elif isinstance(e, ModelChangedEvent) and isinstance(e.model, DataModel) and isinstance(e.new, np.ndarray):
+            new_array = comparable_array(e.new.shape, e.new.dtype, e.new)
+            e.new = new_array
+            e.serializable_new = new_array
 
-#---------------------------------------------------------------------
+
+# ---------------------------------------------------------------------
 # Public API
-#---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+
 
 class JSCode:
-
     def __init__(self, js_code):
         self.js_code = js_code
+
 
 try:
     Serializer.register(JSCode, lambda obj, __: f"--x_x--0_0--{obj.js_code}--x_x--0_0--")  # type: ignore
 except AssertionError:
     pass
 
-def diff(
-    doc: Document, binary: bool = True, events: list[DocumentChangedEvent] | None = None
-) -> Message[Any] | None:
+
+def diff(doc: Document, binary: bool = True, events: list[DocumentChangedEvent] | None = None) -> Message[Any] | None:
     """
     Returns a json diff required to update an existing plot with
     the latest plot data.
@@ -83,27 +88,37 @@ def diff(
     if not events or state._hold:
         return None
 
-    patch_events = [event for event in events if isinstance(event, DocumentPatchedEvent)]
+    # Optimized filtering patch events
+    # Avoid repeated O(n) list building if most events are NOT DocumentPatchedEvent
+    patch_events = []
+    for event in events:
+        if isinstance(event, DocumentPatchedEvent):
+            patch_events.append(event)
     if not patch_events:
         return None
+
     monkeypatch_events(patch_events)
     serializer = Serializer(references=doc.models.synced_references, deferred=binary)
     patch_json = PatchJson(events=serializer.encode(patch_events))
     header = patch_doc.create_header()
-    msg = patch_doc(header, {'use_buffers': binary}, patch_json)
-    doc.callbacks._held_events = [e for e in doc.callbacks._held_events if e not in patch_events]
+    msg = patch_doc(header, {"use_buffers": binary}, patch_json)
+
+    # Optimize held events exclusion with set for large lists
+    patch_events_set = set(patch_events)
+    doc.callbacks._held_events = [e for e in doc.callbacks._held_events if e not in patch_events_set]
     doc.models.flush_synced(lambda model: not serializer.has_ref(model))
     if binary:
         for buffer in serializer.buffers:
             msg.add_buffer(buffer)
     return msg
 
+
 def remove_root(obj: Model, replace: Document | None = None, skip: set[Model] | None = None) -> set[Model]:
     """
     Removes the document from any previously displayed bokeh object
     """
     models = set()
-    for model in obj.select({'type': Model}):
+    for model in obj.select({"type": Model}):
         if skip and model in skip:
             continue
         prev_doc = model.document
@@ -114,6 +129,7 @@ def remove_root(obj: Model, replace: Document | None = None, skip: set[Model] | 
             model._document = replace
         models.add(model)
     return models
+
 
 def add_to_doc(obj: Model, doc: Document, hold: bool = False, skip: set[Model] | None = None):
     """
@@ -126,22 +142,25 @@ def add_to_doc(obj: Model, doc: Document, hold: bool = False, skip: set[Model] |
         doc.hold()
     return models
 
+
 def patch_cds_msg(model, msg):
     """
     Required for handling messages containing JSON serialized typed
     array from the frontend.
     """
-    for event in msg.get('content', {}).get('events', []):
-        if event.get('kind') != 'ModelChanged' or event.get('attr') != 'data':
+    for event in msg.get("content", {}).get("events", []):
+        if event.get("kind") != "ModelChanged" or event.get("attr") != "data":
             continue
-        cds = model.select_one({'id': event.get('model').get('id')})
+        cds = model.select_one({"id": event.get("model").get("id")})
         if not isinstance(cds, ColumnDataSource):
             continue
-        for col, values in event.get('new', {}).items():
+        for col, values in event.get("new", {}).items():
             if isinstance(values, dict):
-                event['new'][col] = [v for _, v in sorted(values.items())]
+                event["new"][col] = [v for _, v in sorted(values.items())]
 
-_DEFAULT_IGNORED_REPR = frozenset(['children', 'text', 'name', 'toolbar', 'renderers', 'below', 'center', 'left', 'right'])
+
+_DEFAULT_IGNORED_REPR = frozenset(["children", "text", "name", "toolbar", "renderers", "below", "center", "left", "right"])
+
 
 def bokeh_repr(obj: Model, depth: int = 0, ignored: Iterable[str] | None = None) -> str:
     """
@@ -152,6 +171,7 @@ def bokeh_repr(obj: Model, depth: int = 0, ignored: Iterable[str] | None = None)
         ignored = _DEFAULT_IGNORED_REPR
 
     from ..viewable import Viewable
+
     if isinstance(obj, Viewable):
         obj = obj.get_root(Document())
 
@@ -163,33 +183,32 @@ def bokeh_repr(obj: Model, depth: int = 0, ignored: Iterable[str] | None = None)
         if k in ignored:
             continue
         if isinstance(v, Model):
-            v = f'{type(v).__name__}()'
+            v = f"{type(v).__name__}()"
         else:
             v = repr(v)
         if len(v) > 30:
-            v = v[:30] + '...'
-        props.append(f'{k}={v}')
-    props_repr = ', '.join(props)
+            v = v[:30] + "..."
+        props.append(f"{k}={v}")
+    props_repr = ", ".join(props)
     if isinstance(obj, FlexBox):
-        r += f'{cls}(children=[\n'
-        for child_obj in obj.children: # type: ignore
-            r += textwrap.indent(bokeh_repr(child_obj, depth=depth+1) + ',\n', '  ')
-        r += f'], {props_repr})'
+        r += f"{cls}(children=[\n"
+        for child_obj in obj.children:  # type: ignore
+            r += textwrap.indent(bokeh_repr(child_obj, depth=depth + 1) + ",\n", "  ")
+        r += f"], {props_repr})"
     else:
-        r += f'{cls}({props_repr})'
+        r += f"{cls}({props_repr})"
     return r
+
 
 def apply_changes_without_dispatch(doc, model, changes):
     hold_value = doc.callbacks.hold_value
-    doc.callbacks._hold = 'collect'
+    doc.callbacks._hold = "collect"
     try:
         model.update(**changes)
     finally:
         doc.callbacks._held_events = [
-            e for e in doc.callbacks._held_events
-            if not isinstance(e, ModelChangedEvent) or
-            e.model is not model or
-            e.attr not in changes or
-            e.new is not changes[e.attr]
+            e
+            for e in doc.callbacks._held_events
+            if not isinstance(e, ModelChangedEvent) or e.model is not model or e.attr not in changes or e.new is not changes[e.attr]
         ]
         doc.callbacks._hold = hold_value
