@@ -65,7 +65,13 @@ def extract_urlparam(args, key):
     """
     Extracts a request argument from a urllib.parse.parse_qs dict.
     """
-    return args.get(key, args.get(f'/?{key}', [None]))[0]
+    values = args.get(key)
+    if values is not None:
+        return values[0]
+    fallback = args.get(f'/?{key}')
+    if fallback is not None:
+        return fallback[0]
+    return None
 
 
 def _serialize_state(state):
