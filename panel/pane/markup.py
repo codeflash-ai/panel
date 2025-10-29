@@ -97,14 +97,15 @@ class HTML(HTMLBasePane):
 
     @classmethod
     def applies(cls, obj: Any) -> float | bool | None:
-        module, name = getattr(obj, '__module__', ''), type(obj).__name__
-        if ((any(m in module for m in ('pandas', 'dask')) and
-            name in ('DataFrame', 'Series')) or hasattr(obj, '_repr_html_')):
-            return 0 if isinstance(obj, param.Parameterized) else 0.2
-        elif isinstance(obj, str):
+        module = getattr(obj, '__module__', '')
+        name = type(obj).__name__
+        # Fast path for str instance
+        if isinstance(obj, str):
             return None
-        else:
-            return False
+        # Avoid generator expression and short-circuit if possible
+        if (('pandas' in module or 'dask' in module) and name in ('DataFrame', 'Series')) or hasattr(obj, '_repr_html_'):
+            return 0 if isinstance(obj, param.Parameterized) else 0.2
+        return False
 
     def _transform_object(self, obj: Any) -> dict[str, Any]:
         text = '' if obj is None else obj
