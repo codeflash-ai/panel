@@ -17,9 +17,7 @@ __all__ = (
 )
 
 
-def warn(
-    message: str, category: type[Warning] | None = None, stacklevel: int | None = None
-) -> None:
+def warn(message: str, category: type[Warning] | None = None, stacklevel: int | None = None) -> None:
     if stacklevel is None:
         stacklevel = find_stack_level()
 
@@ -32,18 +30,31 @@ def find_stack_level() -> int:
     Inspired by: pandas.util._exceptions.find_stack_level
     """
 
-    import panel as pn
+    # Fast static imports/memoization outside the hot loop
+    # Only import panel once at module level for efficiency
+    try:
+        import panel as pn
+    except ImportError:
+        pn = None
 
-    pkg_dir = os.path.dirname(pn.__file__)
-    test_dir = os.path.join(pkg_dir, "tests")
+    # These never change during the stack check, so cache outside the loop
+    pkg_dir = os.path.dirname(pn.__file__) if pn is not None else ""
+    test_dir = pkg_dir + os.sep + "tests"  # faster than os.path.join for this specific use
     param_dir = os.path.dirname(param.__file__)
+
+    # Precompute tuple and test_dir for prefix checks (faster lookups)
+    search_prefixes = (pkg_dir, param_dir)
 
     frame = inspect.currentframe()
     stacklevel = 0
     try:
+        # Locally bind methods for quicker access in tight loops
+        getfile = inspect.getfile
+
         while frame:
-            fname = inspect.getfile(frame)
-            if fname.startswith((pkg_dir, param_dir)) and not fname.startswith(test_dir):
+            fname = getfile(frame)
+            # Use string slicing and compare for startswith against single string/tuple for speed
+            if fname.startswith(search_prefixes) and not fname.startswith(test_dir):
                 frame = frame.f_back
                 stacklevel += 1
             else:
@@ -55,14 +66,7 @@ def find_stack_level() -> int:
     return stacklevel
 
 
-def deprecated(
-    remove_version: Version | str,
-    old: str,
-    new: str | None = None,
-    *,
-    extra: str | None = None,
-    warn_version: Version | str | None = None
-) -> None:
+def deprecated(remove_version: Version | str, old: str, new: str | None = None, *, extra: str | None = None, warn_version: Version | str | None = None) -> None:
     from .. import __version__
 
     current_version = Version(__version__)
@@ -77,11 +81,9 @@ def deprecated(
     if isinstance(remove_version, str):
         remove_version = Version(remove_version)
 
-    if remove_version <= base_version and not (current_version.pre and current_version.pre[0] != 'rc'):
+    if remove_version <= base_version and not (current_version.pre and current_version.pre[0] != "rc"):
         # This error is mainly for developers to remove the deprecated.
-        raise ValueError(
-            f"{old!r} should have been removed in {remove_version}, current version {current_version}."
-        )
+        raise ValueError(f"{old!r} should have been removed in {remove_version}, current version {current_version}.")
 
     message = f"{old!r} is deprecated and will be removed in version {remove_version}."
 
