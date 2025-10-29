@@ -661,12 +661,15 @@ class AuthenticatedStaticFileHandler(StaticFileHandler):
 # Copied from bokeh 2.4.0, to fix directly in bokeh at some point.
 def create_static_handler(prefix, key, app):
     # patch
-    key = '/__patchedroot' if key == '/' else key
+    if key == '/':
+        key = '/__patchedroot'
+        route = prefix + "/static/(.*)"
+    else:
+        route = prefix + key + "/static/(.*)"
 
-    route = prefix
-    route += "/static/(.*)" if key == "/" else key + "/static/(.*)"
-    if app.static_path is not None:
-        return (route, StaticFileHandler, {"path" : app.static_path})
+    static_path = app.static_path
+    if static_path is not None:
+        return (route, StaticFileHandler, {"path": static_path})
     return (route, StaticHandler, {})
 
 bokeh.server.tornado.create_static_handler = create_static_handler
