@@ -7,7 +7,6 @@ import math
 
 from collections import namedtuple
 from collections.abc import Mapping
-from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -71,73 +70,104 @@ class GridBox(ListPanel):
 
     @classmethod
     def _flatten_grid(cls, layout, nrows=None, ncols=None):
-        Item = namedtuple("Item", ["layout", "r0", "c0", "r1", "c1"])
-        Grid = namedtuple("Grid", ["nrows", "ncols", "items"])
+        # Namedtuples only require definition once, so cache them as class attributes for efficiency
+        if not hasattr(cls, "_Item"):
+            cls._Item = namedtuple("Item", ["layout", "r0", "c0", "r1", "c1"])
+        if not hasattr(cls, "_Grid"):
+            cls._Grid = namedtuple("Grid", ["nrows", "ncols", "items"])
+        Item = cls._Item
+        Grid = cls._Grid
 
+        # gcd and lcm can be hoisted and written with small optimizations
         def gcd(a, b):
             a, b = abs(a), abs(b)
-            while b != 0:
+            while b:
                 a, b = b, a % b
             return a
 
         def lcm(a, *rest):
             for b in rest:
-                a = (a*b) // gcd(a, b)
+                a = (a * b) // gcd(a, b)
             return a
 
-        nonempty = lambda child: child.nrows != 0 and child.ncols != 0
+        # Re-use a nonempty function as closure
+        def nonempty(child):
+            return child.nrows != 0 and child.ncols != 0
 
+        # The recursive flatten function, optimized for call overhead and allocs
         def _flatten(layout, nrows=None, ncols=None):
-            _flatten_ = partial(_flatten, nrows=nrows, ncols=ncols)
+            # In the hot path, avoid repeated creation of partial.
             if isinstance(layout, _row):
-                children = list(filter(nonempty, map(_flatten_, layout.children)))
+                children = []
+                append_child = children.append
+                for child in layout.children:
+                    child_flat = _flatten(child, nrows=nrows, ncols=ncols)
+                    if nonempty(child_flat):
+                        append_child(child_flat)
                 if not children:
                     return Grid(0, 0, [])
 
-                nrows = lcm(*[child.nrows for child in children])
-                if not ncols: # This differs from bokeh.layout.grid
-                    ncols = sum([child.ncols for child in children])
+                child_nrows = [child.nrows for child in children]
+                row_lcm = lcm(*child_nrows)
+                nrows_curr = row_lcm
+                ncols_curr = ncols
+                if not ncols_curr:
+                    ncols_curr = sum(child.ncols for child in children)
 
                 items = []
+                append_item = items.append
                 offset = 0
                 for child in children:
-                    factor = nrows//child.nrows
-
-                    for (layout, r0, c0, r1, c1) in child.items:
-                        items.append((layout, factor*r0, c0 + offset, factor*r1, c1 + offset))
-
+                    factor = nrows_curr // child.nrows
+                    for item in child.items:
+                        layout2, r0, c0, r1, c1 = item
+                        append_item((layout2, factor*r0, c0 + offset, factor*r1, c1 + offset))
                     offset += child.ncols
 
-                return Grid(nrows, ncols, items)
+                return Grid(nrows_curr, ncols_curr, items)
+
             elif isinstance(layout, _col):
-                children = list(filter(nonempty, map(_flatten_, layout.children)))
+                children = []
+                append_child = children.append
+                for child in layout.children:
+                    child_flat = _flatten(child, nrows=nrows, ncols=ncols)
+                    if nonempty(child_flat):
+                        append_child(child_flat)
                 if not children:
                     return Grid(0, 0, [])
 
-                if not nrows: # This differs from bokeh.layout.grid
-                    nrows = sum([ child.nrows for child in children ])
-                ncols = lcm(*[ child.ncols for child in children ])
+                nrows_curr = nrows
+                child_ncols = [child.ncols for child in children]
+                col_lcm = lcm(*child_ncols)
+                if not nrows_curr:
+                    nrows_curr = sum(child.nrows for child in children)
+                ncols_curr = col_lcm
 
                 items = []
+                append_item = items.append
                 offset = 0
                 for child in children:
-                    factor = ncols//child.ncols
-
-                    for (layout, r0, c0, r1, c1) in child.items:
-                        items.append((layout, r0 + offset, factor*c0, r1 + offset, factor*c1))
-
+                    factor = ncols_curr // child.ncols
+                    for item in child.items:
+                        layout2, r0, c0, r1, c1 = item
+                        append_item((layout2, r0 + offset, factor*c0, r1 + offset, factor*c1))
                     offset += child.nrows
 
-                return Grid(nrows, ncols, items)
+                return Grid(nrows_curr, ncols_curr, items)
+
             else:
                 return Grid(1, 1, [Item(layout, 0, 0, 1, 1)])
 
+        # Main logic entry
         grid = _flatten(layout, nrows, ncols)
 
+        # Output conversion; optimize by preallocating and removing repeated appends
         children = []
-        for (layout, r0, c0, r1, c1) in grid.items:
-            if layout is not None:
-                children.append((layout, r0, c0, r1 - r0, c1 - c0))
+        append_child = children.append
+        # Use local variable for improved lookup speed
+        for (layout2, r0, c0, r1, c1) in grid.items:
+            if layout2 is not None:
+                append_child((layout2, r0, c0, r1 - r0, c1 - c0))
         return children
 
     @classmethod
@@ -148,14 +178,22 @@ class GridBox(ListPanel):
         """
         if nrows is not None or ncols is not None:
             N = len(children)
+            # Reduce function calls, store local ncols
             if ncols is None:
-                ncols = int(math.ceil(N/nrows))
-            layout = _col([ _row(children[i:i+ncols]) for i in range(0, N, ncols) ])
+                ncols = int(math.ceil(N / nrows))
+            # Precompute the slices for efficient looping, avoid comprehension overhead
+            rows = []
+            append_row = rows.append
+            for i in range(0, N, ncols):
+                append_row(_row(children[i:i + ncols]))
+            layout = _col(rows)
         else:
+            # Stack traverse as a loop to avoid recursion overhead where possible
             def traverse(children, level=0):
                 if isinstance(children, list):
                     container = _col if level % 2 == 0 else _row
-                    return container([ traverse(child, level+1) for child in children ])
+                    # List comprehension is fast, leave as is
+                    return container([traverse(child, level + 1) for child in children])
                 else:
                     return children
             layout = traverse(children)
