@@ -7,6 +7,7 @@ import warnings
 import param
 
 from packaging.version import Version
+from functools import lru_cache
 
 __all__ = (
     "deprecated",
@@ -17,11 +18,9 @@ __all__ = (
 )
 
 
-def warn(
-    message: str, category: type[Warning] | None = None, stacklevel: int | None = None
-) -> None:
+def warn(message: str, category: type[Warning] | None = None, stacklevel: int | None = None) -> None:
     if stacklevel is None:
-        stacklevel = find_stack_level()
+        stacklevel = find_stack_level()  # external - do not cache unless in external module
 
     warnings.warn(message, category, stacklevel=stacklevel)
 
@@ -55,43 +54,41 @@ def find_stack_level() -> int:
     return stacklevel
 
 
-def deprecated(
-    remove_version: Version | str,
-    old: str,
-    new: str | None = None,
-    *,
-    extra: str | None = None,
-    warn_version: Version | str | None = None
-) -> None:
+def deprecated(remove_version: Version | str, old: str, new: str | None = None, *, extra: str | None = None, warn_version: Version | str | None = None) -> None:
     from .. import __version__
 
-    current_version = Version(__version__)
-    base_version = Version(current_version.base_version)
+    # Use cached version parsing
+    current_version = _cached_version(__version__)
+    base_version = _cached_version(current_version.base_version)
 
     if warn_version:
         if isinstance(warn_version, str):
-            warn_version = Version(warn_version)
+            warn_version = _cached_version(warn_version)
         if base_version < warn_version:
             return
 
     if isinstance(remove_version, str):
-        remove_version = Version(remove_version)
+        remove_version = _cached_version(remove_version)
 
-    if remove_version <= base_version and not (current_version.pre and current_version.pre[0] != 'rc'):
+    if remove_version <= base_version and not (current_version.pre and current_version.pre[0] != "rc"):
         # This error is mainly for developers to remove the deprecated.
-        raise ValueError(
-            f"{old!r} should have been removed in {remove_version}, current version {current_version}."
-        )
+        raise ValueError(f"{old!r} should have been removed in {remove_version}, current version {current_version}.")
 
-    message = f"{old!r} is deprecated and will be removed in version {remove_version}."
-
+    # Build the message as efficiently as possible
     if new:
-        message = f"{message[:-1]}, use {new!r} instead."
+        message = f"{old!r} is deprecated and will be removed in version {remove_version}, use {new!r} instead."
+    else:
+        message = f"{old!r} is deprecated and will be removed in version {remove_version}."
 
     if extra:
         message += " " + extra.strip()
 
     warn(message, PanelDeprecationWarning)
+
+
+@lru_cache(maxsize=64)
+def _cached_version(ver: str) -> Version:
+    return Version(ver)
 
 
 class PanelDeprecationWarning(DeprecationWarning):
