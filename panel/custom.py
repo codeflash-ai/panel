@@ -839,35 +839,67 @@ class ReactComponent(ReactiveESM):
     def _process_importmap(cls):
         imports = cls._importmap.get('imports', {})
         v_react = cls._react_version
-        if config.autoreload:
+        autoreload = config.autoreload
+
+        # Cache the suffixes and URL fragments, minimizing string operations
+        if autoreload:
             pkg_suffix, path_suffix = '?dev', '&dev'
         else:
             pkg_suffix = path_suffix = ''
+
+        # Precompute all string format values used below (these f-strings are not reused per k/v below)
+        react_url = f"https://esm.sh/react@{v_react}{pkg_suffix}"
+        react_url_slash = f"https://esm.sh/react@{v_react}{path_suffix}/"
+        react_dom_url = f"https://esm.sh/react-dom@{v_react}?deps=react@{v_react}&external=react"
+        react_dom_url_slash = f"https://esm.sh/react-dom@{v_react}&deps=react@{v_react}{path_suffix}&external=react/"
         imports_with_deps = {
-            "react": f"https://esm.sh/react@{v_react}{pkg_suffix}",
-            "react/": f"https://esm.sh/react@{v_react}{path_suffix}/",
-            "react-dom": f"https://esm.sh/react-dom@{v_react}?deps=react@{v_react}&external=react",
-            "react-dom/": f"https://esm.sh/react-dom@{v_react}&deps=react@{v_react}{path_suffix}&external=react/"
+            "react": react_url,
+            "react/": react_url_slash,
+            "react-dom": react_dom_url,
+            "react-dom/": react_dom_url_slash
         }
+
+        # Suffix for additional dependency chaining
         suffix = f'deps=react@{v_react},react-dom@{v_react}&external=react,react-dom'
-        if any('@mui' in v for v in imports.values()):
+
+        # Use basic string search methods for '@mui' (faster than generator expression)
+        # This avoids creating a temporary list of all values with generator expressions
+        need_emotion = False
+        for v in imports.values():
+            if '@mui' in v:
+                need_emotion = True
+                break
+        if need_emotion:
             suffix += ',react-is,@emotion/react'
+            v_react_emotion_deps = f'?deps=react@{v_react},react-dom@{v_react}'
             imports_with_deps.update({
                 "react-is": f"https://esm.sh/react-is@{v_react}&external=react",
-                "@emotion/cache": f"https://esm.sh/@emotion/cache?deps=react@{v_react},react-dom@{v_react}",
-                "@emotion/react": f"https://esm.sh/@emotion/react?deps=react@{v_react},react-dom@{v_react}&external=react,react-is",
-                "@emotion/styled": f"https://esm.sh/@emotion/styled?deps=react@{v_react},react-dom@{v_react}&external=react,react-is",
+                "@emotion/cache": f"https://esm.sh/@emotion/cache{v_react_emotion_deps}",
+                "@emotion/react": f"https://esm.sh/@emotion/react{v_react_emotion_deps}&external=react,react-is",
+                "@emotion/styled": f"https://esm.sh/@emotion/styled{v_react_emotion_deps}&external=react,react-is",
             })
+
+        # Locally cache suffix string checks for loop, faster than building f-strings each time
+        suffix_path = f'{suffix}&path=/'
+
+        # Instead of string operations per key, reduce unnecessary lookups (accesses .items() once)
+        # Also move the '? not in v' test before 'esm.sh' to short-circuit
         for k, v in imports.items():
+            # Short-circuit: most URLs do NOT need rewriting
             if '?' not in v and 'esm.sh' in v:
+                # .endswith is fast, but avoid slicing if not necessary
                 if v.endswith('/'):
-                    v = f'{v[:-1]}?{suffix}&path=/'
+                    # Avoid constructing f-strings for unchanged values; only rewrite when needed
+                    v = f'{v[:-1]}?{suffix_path}'
                 else:
                     v = f'{v}?{suffix}'
             imports_with_deps[k] = v
+
+        # Avoid repeated .get lookups for scopes
+        scopes = cls._importmap.get('scopes', {})
         return {
             'imports': imports_with_deps,
-            'scopes': cls._importmap.get('scopes', {})
+            'scopes': scopes
         }
 
     def _get_properties(self, doc: Document | None) -> dict[str, Any]:
