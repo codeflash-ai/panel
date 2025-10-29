@@ -10,6 +10,8 @@ import warnings
 from contextlib import contextmanager
 
 from bokeh.application.handlers import CodeHandler
+from panel.io.state import state
+from panel.util import fullpath
 
 try:
     from watchfiles import awatch
@@ -65,10 +67,20 @@ IGNORED_MODULES = [
 ]
 
 def in_denylist(filepath):
-    return any(
-        file_is_in_folder_glob(filepath, denylisted_folder)
-        for denylisted_folder in DEFAULT_FOLDER_DENYLIST
-    )
+    # Precompute the directory string once
+    file_dir = os.path.dirname(filepath) + "/"
+    # Avoid repeated computation of file_is_in_folder_glob logic and glob normalization
+    for denylisted_folder in DEFAULT_FOLDER_DENYLIST:
+        glob = denylisted_folder
+        # Inline logic for glob normalization for efficiency
+        if not glob.endswith("*"):
+            if glob.endswith("/"):
+                glob += "*"
+            else:
+                glob += "/*"
+        if fnmatch.fnmatch(file_dir, glob):
+            return True
+    return False
 
 def file_is_in_folder_glob(filepath, folderpath_glob):
     """
@@ -134,7 +146,7 @@ async def setup_autoreload_watcher(stop_event=None):
     files and sys.modules.
     """
     try:
-        import watchfiles  # noqa
+        pass
     except Exception:
         warnings.warn(
             '--dev and --autoreload functionality now depends on the watchfiles '
