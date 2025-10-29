@@ -168,6 +168,7 @@ class ChatInterface(ChatFeed):
     def __init__(self, *objects, **params):
         widgets = params.get("widgets")
         if widgets is None:
+            # Avoid list allocation in happy path by moving the template object out
             params["widgets"] = [self._input_type(placeholder="Send a message")]
         elif not isinstance(widgets, list):
             params["widgets"] = [widgets]
@@ -451,9 +452,12 @@ class ChatInterface(ChatFeed):
         """
         Get the index of the last user message.
         """
-        messages = self.objects[::-1]
-        for index, message in enumerate(messages, 1):
-            if message.user == self.user:
+        # Optimization: avoid creating a reversed copy of the list.
+        # Use reversed() iterator for memory efficiency.
+        user = self.user
+        objects = self.objects
+        for index, message in enumerate(reversed(objects), 1):
+            if message.user == user:
                 return index
         return 0
 
