@@ -236,7 +236,7 @@ def base64url_encode(input):
         input = input.encode("utf-8")
     encoded = base64.urlsafe_b64encode(input).decode('ascii')
     # remove padding '=' chars that cause trouble
-    return str(encoded.rstrip('='))
+    return encoded.rstrip('=')
 
 
 def base64url_decode(input):
@@ -257,10 +257,11 @@ def decode_token(token: str, signed: bool = True) -> dict[str, Any]:
     """
     if signed and "." in token:
         signing_input, _ = token.encode('utf-8').rsplit(b".", 1)
+        # Only split once, payload is the second segment
         _, payload_segment = signing_input.split(b".", 1)
     else:
         payload_segment = token.encode('ascii')
-    return json.loads(base64url_decode(payload_segment).decode('utf-8'))
+    return json.loads(base64.urlsafe_b64decode(payload_segment + b'=' * ((4 - len(payload_segment) % 4) % 4)).decode('utf-8'))
 
 
 class classproperty:
