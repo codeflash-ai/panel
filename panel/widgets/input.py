@@ -780,8 +780,11 @@ class DatetimePicker(_DatetimePickerBase):
         return value
 
     def _deserialize_value(self, value):
-        if isinstance(value, (datetime, date)):
-            value = value.strftime(r'%Y-%m-%d %H:%M:%S')
+        # Avoid unnecessary isinstance checks when possible
+        if type(value) is datetime:
+            return value.strftime(r'%Y-%m-%d %H:%M:%S')
+        elif type(value) is date:
+            return value.strftime(r'%Y-%m-%d %H:%M:%S')
         return value
 
 
