@@ -409,38 +409,46 @@ class OAuthLoginHandler(tornado.web.RequestHandler, OAuth2Mixin):
 
     @staticmethod
     def set_auth_cookies(handler, id_token, access_token, refresh_token=None, expires_in=None):
+        # Cache repeated config values to local variables for speed
+        expires_days = config.oauth_expiry
+        cookie_path = config.cookie_path
+
+        user = None
         if id_token:
+            # Only decode string tokens—if already decoded, don't double-work
             if isinstance(id_token, str):
                 decoded = decode_token(id_token)
             else:
                 decoded = id_token
                 id_token = base64url_encode(json.dumps(id_token))
             user_key = config.oauth_jwt_user or handler._USER_KEY
-            if user_key in decoded:
-                user = decoded[user_key]
-            else:
-                log.error("%s token payload did not contain expected %r.",
-                          type(handler).__name__, user_key)
+            user = decoded.get(user_key)
+            if user is None:
+                log = getattr(handler, "log", None)
+                if log:
+                    log.error("%s token payload did not contain expected %r.",
+                              type(handler).__name__, user_key)
                 raise HTTPError(401, "OAuth token payload missing user information")
             handler.clear_cookie('is_guest')
-            handler.set_secure_cookie('user', user, expires_days=config.oauth_expiry, httponly=True, path=config.cookie_path)
-        else:
-            user = None
+            handler.set_secure_cookie('user', user, expires_days=expires_days, httponly=True, path=cookie_path)
 
-        if state.encryption:
-            access_token = state.encryption.encrypt(access_token.encode('utf-8'))
+        # Encrypt tokens if encryption is enabled
+        encrypt = getattr(state, "encryption", None)
+        if encrypt:
+            access_token = encrypt.encrypt(access_token.encode('utf-8'))
             if id_token:
-                id_token = state.encryption.encrypt(id_token.encode('utf-8'))
+                id_token = encrypt.encrypt(id_token.encode('utf-8'))
             if refresh_token:
-                refresh_token = state.encryption.encrypt(refresh_token.encode('utf-8'))
-        handler.set_secure_cookie('access_token', access_token, expires_days=config.oauth_expiry, httponly=True, path=config.cookie_path)
+                refresh_token = encrypt.encrypt(refresh_token.encode('utf-8'))
+
+        handler.set_secure_cookie('access_token', access_token, expires_days=expires_days, httponly=True, path=cookie_path)
         if id_token:
-            handler.set_secure_cookie('id_token', id_token, expires_days=config.oauth_expiry, httponly=True, path=config.cookie_path)
+            handler.set_secure_cookie('id_token', id_token, expires_days=expires_days, httponly=True, path=cookie_path)
         if expires_in:
             now_ts = dt.datetime.now(dt.timezone.utc).timestamp()
-            handler.set_secure_cookie('oauth_expiry', str(int(now_ts + expires_in)), expires_days=config.oauth_expiry, httponly=True, path=config.cookie_path)
+            handler.set_secure_cookie('oauth_expiry', str(int(now_ts + expires_in)), expires_days=expires_days, httponly=True, path=cookie_path)
         if refresh_token:
-            handler.set_secure_cookie('refresh_token', refresh_token, expires_days=config.oauth_expiry, httponly=True, path=config.cookie_path)
+            handler.set_secure_cookie('refresh_token', refresh_token, expires_days=expires_days, httponly=True, path=cookie_path)
         if user and user in state._oauth_user_overrides:
             state._oauth_user_overrides.pop(user, None)
         return user
