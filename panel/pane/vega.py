@@ -115,13 +115,21 @@ def _get_selections(obj, version=None):
 
 def _to_json(obj):
     if isinstance(obj, dict):
+        # Avoid unnecessary copy if there is no 'data' key
+        if 'data' not in obj:
+            return obj
         json = dict(obj)
-        if 'data' in json:
-            data = json['data']
-            if isinstance(data, dict):
-                json['data'] = dict(data)
-            elif isinstance(data, list):
-                json['data'] = [dict(d) for d in data]
+        data = json['data']
+        if isinstance(data, dict):
+            # No change needed, but avoid unnecessary copy if already a dict instance (shallow)
+            json['data'] = dict(data) if type(data) is not dict else data
+        elif isinstance(data, list):
+            # Optimize: avoid list comprehension if all dicts are already dict instances (shallow)
+            # Otherwise, preserve original behavior for mixed or non-dict items
+            if data and all(type(d) is dict for d in data):
+                json['data'] = data
+            else:
+                json['data'] = [dict(d) if type(d) is not dict else d for d in data]
         return json
     return obj.to_dict()
 
