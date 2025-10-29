@@ -19,6 +19,7 @@ from ..reactive import ReactiveData
 from ..util import datetime_types, lazy_load
 from ..viewable import Viewable
 from .base import ModelPane
+from panel.models.perspective import THEME_URL
 
 if TYPE_CHECKING:
     from bokeh.document import Document
@@ -418,11 +419,17 @@ class Perspective(ModelPane, ReactiveData):
         return props
 
     def _get_theme(self, theme, resources=None):
-        from ..models.perspective import THEME_URL
+        # Replace all instances of 'material' with 'pro' in theme string (as in original)
+        # Avoid importing THEME_URL every call by moving import to module scope
         theme = theme.replace('material', 'pro')
         theme_url = f'{THEME_URL}{theme}.css'
-        if self._bokeh_model is not None:
-            self._bokeh_model.__css_raw__ = self._bokeh_model.__css_raw__[:5] + [theme_url]
+
+        bokeh_model = self._bokeh_model
+        # Avoid repeated attribute lookups
+        if bokeh_model is not None:
+            # Avoid repeated computation of self._bokeh_model.__css_raw__[:5] by storing reference
+            css_raw = bokeh_model.__css_raw__
+            bokeh_model.__css_raw__ = css_raw[:5] + [theme_url]
         return theme_url
 
     def _process_param_change(self, params):
