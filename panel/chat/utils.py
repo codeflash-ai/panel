@@ -16,6 +16,8 @@ from ..io.resources import CDN_DIST
 from ..pane.image import ImageBase
 from ..viewable import Viewable
 
+_ALPHA_NUMERIC_REGEX = re.compile(r"\W+")
+
 Avatar = Union[str, BytesIO, bytes, ImageBase]
 AvatarDict = dict[str, Avatar]
 
@@ -25,7 +27,7 @@ def to_alpha_numeric(user: str) -> str:
     Convert the user name to an alpha numeric string,
     removing all non-alphanumeric characters.
     """
-    return re.sub(r"\W+", "", user).lower()
+    return _ALPHA_NUMERIC_REGEX.sub("", user).lower()
 
 
 def avatar_lookup(
@@ -43,9 +45,7 @@ def avatar_lookup(
     # update with the user input
     updated_avatars.update(avatars)
     # correct the keys to be alpha numeric
-    updated_avatars = {
-        to_alpha_numeric(key): value for key, value in updated_avatars.items()
-    }
+    updated_avatars = {to_alpha_numeric(key): value for key, value in updated_avatars.items()}
 
     # now lookup the avatar
     avatar = updated_avatars.get(alpha_numeric_key, avatar)
@@ -56,9 +56,7 @@ def avatar_lookup(
     return avatar
 
 
-def build_avatar_pane(
-    avatar: Any, css_classes: list[str], width: int = 15, height: int = 15
-) -> Image | HTML:
+def build_avatar_pane(avatar: Any, css_classes: list[str], width: int = 15, height: int = 15) -> Image | HTML:
     avatar_params = {
         "css_classes": css_classes,
         "width": width,
@@ -66,9 +64,7 @@ def build_avatar_pane(
     }
     if isinstance(avatar, Viewable):
         avatar_pane = avatar
-        avatar_params["css_classes"] = (
-            avatar_params.get("css_classes", []) + avatar_pane.css_classes
-        )
+        avatar_params["css_classes"] = avatar_params.get("css_classes", []) + avatar_pane.css_classes
         avatar_pane.param.update(avatar_params)
     elif not isinstance(avatar, (BytesIO, bytes)) and len(avatar) == 1:
         # single character
@@ -103,23 +99,33 @@ def stream_to(obj, token: str, replace: bool = False, object_panel: Viewable | N
     if obj is None:
         obj = ""
 
+    # Use local variable binding for hasattr to avoid name lookup on each loop iteration
+    getattr_obj = getattr
     while not isinstance(obj, str) or isinstance(object_panel, ImageBase):
         object_panel = obj
-        if hasattr(obj, "objects"):
+        # Fast-path: use getattr with default to avoid repeated hasattr checks
+        objects = getattr_obj(obj, "objects", None)
+        if objects is not None:
             parent_panel = obj
             attr = "objects"
-            obj = obj.objects[i]
+            obj = objects[i]
             i = -1
-        elif hasattr(obj, "object"):
+            continue
+        object_attr = getattr_obj(obj, "object", None)
+        if object_attr is not None:
             attr = "object"
-            obj = obj.object
-        elif hasattr(obj, "value"):
+            obj = object_attr
+            continue
+        value_attr = getattr_obj(obj, "value", None)
+        if value_attr is not None:
             attr = "value"
-            obj = obj.value
-        elif parent_panel is not None:
+            obj = value_attr
+            continue
+        if parent_panel is not None:
             obj = parent_panel
             parent_panel = None
             i -= 1
+
     contents = token if replace else obj + token
     setattr(object_panel, attr, contents)
     return object_panel
@@ -179,10 +185,7 @@ def serialize_recursively(
         string = obj.object
 
     if hasattr(string, "decode") or isinstance(string, BytesIO):
-        param.main.param.warning(
-            f"Serializing byte-like objects are not supported yet; "
-            f"using the label of the object as a placeholder for {obj}"
-        )
+        param.main.param.warning(f"Serializing byte-like objects are not supported yet; using the label of the object as a placeholder for {obj}")
         return get_obj_label(obj)
 
     if prefix_with_viewable_label and isinstance(obj, Viewable):
